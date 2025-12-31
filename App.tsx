@@ -121,8 +121,12 @@ const App: React.FC = () => {
   };
 
   const handleAiEdit = async () => {
-    if (!originalImage?.originalUrl || !process.env.API_KEY) {
-       if (!process.env.API_KEY) setErrorMessage("API Key not found in environment.");
+    const apiKey = process.env.API_KEY;
+    if (!originalImage?.originalUrl) return;
+    
+    // Explicitly check for API Key before starting processing
+    if (!apiKey || apiKey.trim() === '') {
+       setErrorMessage("Missing API Key. Please add VITE_API_KEY in Vercel Settings and redeploy.");
        return;
     }
     
@@ -134,50 +138,28 @@ const App: React.FC = () => {
 
       // 1. Prepare Source Blob
       if (isMasking && maskStrokes.length > 0) {
-        // Composite the mask onto the image
-        // We use the current preview URL which might be scaled/cropped?
-        // For simplicity, let's assume we are editing the base currentUrl or originalUrl
-        // Ideally we should process pending scales first.
-        
-        // Let's grab the current displayed image state (without crop overlay)
+         // Let's grab the current displayed image state (without crop overlay)
          const { url } = await processImage(originalImage.originalUrl, {
              scale, maintainAspect, crop: cropEnabled ? cropData : undefined, format: 'png', quality: 1
          });
          
-         // Now composite mask
-         // IMPORTANT: mask strokes are relative to the displayed image size in the overlay component?
-         // No, the overlay component passes strokes in canvas coordinates (which match displayed image resolution if configured correctly).
-         // But `compositeMaskOntoImage` loads the image.
-         
-         // We must use the current preview as base
          const { blob } = await compositeMaskOntoImage(
              url, 
              maskStrokes, 
-             // We need to know the dimensions of 'url'. processImage returns it.
-             // But we can just rely on the Image load inside composite.
-             // We need to pass the dimensions of the canvas the user drew on? 
-             // BrushOverlay uses 'width' and 'height' props which are container dims.
-             // strokes are in that coordinate space.
-             // We need to scale strokes to the actual image resolution.
              containerDim.w, 
              containerDim.h
          );
          sourceBlob = blob;
          
-         // Because we are using "Visual Prompting", we prepend instruction
          if (!aiPrompt.toLowerCase().includes("red")) {
-             // We implicitly assume the user wants to edit the highlighted part.
-             // However, `aiEditImage` prompt is just text.
-             // We'll modify the prompt sent to API.
+             // Implicit prompt adjustment could go here
          }
 
       } else if (isExpanding) {
-         // Current previewURL should already be the expanded canvas (white bars)
          if (!previewUrl) throw new Error("No image to expand");
          const response = await fetch(previewUrl);
          sourceBlob = await response.blob();
       } else {
-         // Standard global edit
          const { blob } = await processImage(originalImage.originalUrl, {
             scale, maintainAspect, crop: cropEnabled ? cropData : undefined, format: 'png', quality: 1
          });
@@ -201,7 +183,6 @@ const App: React.FC = () => {
       setOriginalImage(prev => prev ? ({
           ...prev,
           originalUrl: newUrl, 
-          // We should update dimensions here properly
       }) : null);
       
       const img = new Image();
@@ -210,7 +191,6 @@ const App: React.FC = () => {
           setOriginalImage(prev => prev ? ({...prev, width: img.width, height: img.height}) : null);
           setPreviewUrl(newUrl);
           
-          // Reset UI states
           setScale(1);
           setCropEnabled(false);
           setIsMasking(false);
@@ -221,7 +201,8 @@ const App: React.FC = () => {
       };
 
     } catch (e: any) {
-      setErrorMessage("AI Processing failed: " + e.message);
+      console.error(e);
+      setErrorMessage("AI Failed: " + (e.message || "Unknown error"));
     } finally {
       setIsAiProcessing(false);
     }
@@ -256,14 +237,11 @@ const App: React.FC = () => {
       if (!originalImage?.originalUrl) return;
       setIsProcessing(true);
       try {
-          // Reset crop/mask if expanding
           setCropEnabled(false);
           setIsMasking(false);
           
-          // 1. Get current base image (with any applied crop/scale?)
-          // For simplicity, expand original
           const { url } = await expandImageCanvas(originalImage.originalUrl, ratio, 'white');
-          setPreviewUrl(url); // Show preview with bars
+          setPreviewUrl(url); 
       } catch(e) {
           setErrorMessage("Expansion preview failed");
       } finally {
@@ -271,16 +249,12 @@ const App: React.FC = () => {
       }
   };
 
-  // Measure container
   useEffect(() => {
     if (previewContainerRef.current) {
         const { clientWidth, clientHeight } = previewContainerRef.current;
         setContainerDim({ w: clientWidth, h: clientHeight });
     }
-  }, [previewUrl, mode, isExpanding]); // Re-measure when expanding changes layout?
-
-
-  // ---- RENDER ----
+  }, [previewUrl, mode, isExpanding]); 
 
   if (mode === AppMode.UPLOAD) {
     return (
