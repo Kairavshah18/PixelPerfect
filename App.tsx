@@ -202,7 +202,25 @@ const App: React.FC = () => {
 
     } catch (e: any) {
       console.error(e);
-      setErrorMessage("AI Failed: " + (e.message || "Unknown error"));
+      let friendlyMessage = e.message || "Unknown error";
+      
+      // Attempt to parse JSON error message if it comes in raw
+      try {
+          if (typeof friendlyMessage === 'string' && friendlyMessage.trim().startsWith('{')) {
+              const parsed = JSON.parse(friendlyMessage);
+              if (parsed.error && parsed.error.message) {
+                  friendlyMessage = parsed.error.message;
+              }
+          }
+      } catch (err) {
+          // ignore parse errors
+      }
+
+      if (friendlyMessage.includes("quota") || friendlyMessage.includes("429") || friendlyMessage.includes("RESOURCE_EXHAUSTED")) {
+          friendlyMessage = "High traffic or quota exceeded. Please wait a minute before trying again.";
+      }
+      
+      setErrorMessage("AI Failed: " + friendlyMessage);
     } finally {
       setIsAiProcessing(false);
     }
